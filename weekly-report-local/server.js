@@ -8,7 +8,6 @@ import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import cron from 'node-cron';
-import open from 'open';
 import { runSync } from './sync.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -77,11 +76,8 @@ cron.schedule(SCHEDULE, async () => {
 }, { timezone: 'Asia/Seoul' });
 
 // ── 서버 시작 ─────────────────────────────────────────────────
-app.listen(PORT, async () => {
-  const url = `http://localhost:${PORT}`;
-  console.log(`\n✅ 주간보고 대시보드 실행 중: ${url}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n✅ 주간보고 대시보드 실행 중: http://0.0.0.0:${PORT}`);
   console.log(`📅 자동 동기화: 매주 월요일 오전 9시 (Asia/Seoul)`);
   console.log(`🔄 수동 동기화: node sync.js\n`);
-  // 처음 실행 시 브라우저 자동 오픈
-  await open(url).catch(() => {});
 });

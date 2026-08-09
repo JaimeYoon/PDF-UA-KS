@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  weekly-report:
+    build: .
+    image: weekly-report-dashboard:latest
+    container_name: weekly-report
+    restart: unless-stopped
+    ports:
+      - "3000:3000"        # NAS IP:3000 으로 접속
+    volumes:
+      - ./data:/app/data   # 동기화 데이터 영구 보존
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Seoul
+      - NODE_ENV=production
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
