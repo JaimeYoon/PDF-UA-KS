@@ -2,12 +2,15 @@ version: "3.9"
 
 services:
   weekly-report:
-    build: .
-    image: weekly-report-dashboard:latest
+    # GHCR 이미지 사용 (NAS에서 빌드 불필요)
+    image: ghcr.io/jaimeyoon/weekly-report-dashboard:latest
+    # 로컬에서 빌드하려면 아래 두 줄을 활성화하고 위 image 줄을 주석 처리
+    # build: .
+    # image: weekly-report-dashboard:latest
     container_name: weekly-report
     restart: unless-stopped
     ports:
-      - "3000:3000"        # NAS IP:3000 으로 접속
+      - "3000:3000"
     volumes:
       - ./data:/app/data   # 동기화 데이터 영구 보존
     env_file:
