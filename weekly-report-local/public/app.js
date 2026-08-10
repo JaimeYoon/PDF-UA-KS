@@ -62,7 +62,7 @@ function renderOverview(report) {
   $('categories').innerHTML = cats.length
     ? cats.map(c => {
         const cp = c.progress ?? 0;
-        const tasks = (c.tasks || []).slice(0, 5);
+        const tasks = (c.tasks || []).slice(0, 10);
         return `
           <div class="cat-card">
             <div class="cat-header">
@@ -72,16 +72,14 @@ function renderOverview(report) {
             <div class="cat-bar-wrap">
               <div class="cat-bar" style="width:${cp}%;background:${progressColor(cp)}"></div>
             </div>
-            <div class="cat-tasks">
+            <ul class="cat-bullet-list">
               ${tasks.map(t => `
-                <div class="task-row">
-                  <span class="task-dot" style="background:${statusColor(t.status)}"></span>
-                  <span class="task-name">${esc(t.title)}</span>
-                  <span class="task-status" style="color:${statusColor(t.status)}">${statusLabel(t.status)}</span>
-                  ${t.progress != null ? `<span class="task-pct">${t.progress}%</span>` : ''}
-                </div>
+                <li class="cat-bullet-item">
+                  <span class="bullet-dot" style="color:${statusColor(t.status)}">●</span>
+                  <span class="bullet-text">${esc(t.detail || t.title)}</span>
+                </li>
               `).join('')}
-            </div>
+            </ul>
           </div>
         `;
       }).join('')
