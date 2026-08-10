@@ -20,27 +20,28 @@ export class ConfluenceClient {
   /** 부모 페이지의 하위 주간보고 목록 최신순 반환 (CQL 사용, 중첩 구조 지원) */
   async listWeeklyPages(limit = 20) {
     const cql = `ancestor = ${this.parentPageId} AND title ~ "주간 업무 보고" AND type = page ORDER BY lastmodified DESC`;
-    const res = await this.http.get('/search', {
-      params: { cql, limit, expand: 'version,history' },
-    });
-
-    const results = res.data.results || [];
-
-    // CQL 결과가 없으면 직계 child 방식으로 폴백
-    if (results.length === 0) {
-      const fallback = await this.http.get(`/content/${this.parentPageId}/child/page`, {
-        params: { limit, expand: 'version,history', orderby: 'history.lastUpdated desc' },
+    try {
+      const res = await this.http.get('/content/search', {
+        params: { cql, limit, expand: 'version,history' },
       });
-      return (fallback.data.results || []).map(p => ({
-        id: p.id,
-        title: p.title,
-        lastModified: p.version?.when,
-        author: p.version?.by?.displayName,
-        url: `${this.baseUrl}/pages/viewpage.action?pageId=${p.id}`,
-      }));
+      const results = res.data.results || [];
+      if (results.length > 0) {
+        return results.map(p => ({
+          id: p.id,
+          title: p.title,
+          lastModified: p.version?.when,
+          author: p.version?.by?.displayName,
+          url: `${this.baseUrl}/pages/viewpage.action?pageId=${p.id}`,
+        }));
+      }
+    } catch (e) {
+      // CQL 실패 시 직계 child 방식으로 폴백
     }
 
-    return results.map(p => ({
+    const fallback = await this.http.get(`/content/${this.parentPageId}/child/page`, {
+      params: { limit, expand: 'version,history', orderby: 'history.lastUpdated desc' },
+    });
+    return (fallback.data.results || []).map(p => ({
       id: p.id,
       title: p.title,
       lastModified: p.version?.when,
