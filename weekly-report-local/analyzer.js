@@ -1,140 +1,216 @@
 /**
- * AX플랫폼전략팀 주간보고 형식 파서
- * 형식: ## [날짜] 이름 주간 업무 보고 + Phase N 진행율 : X% + [진행]/[완료] 태그
+ * AX사업기획실 주간업무 형식 파서 (AX1 스페이스, ancestor 2063040683)
+ * 레이어별 파싱: Runtime & Agent Gateway, Agent Lifecycle, Security & Governance,
+ *   Data & Integration, Document Solution Agent, User Layer + AX사업기획, AX기술 등
  */
 
-function extractPeriod(title) {
-  const match = title.match(/\[(\d+\/\d+)\]/) || title.match(/(\d{2}\/\d{1,2}\/\d{1,2})/);
-  return match ? match[1] : title;
+const LAYER_PATTERNS = [
+  { pattern: /Runtime\s*&\s*(?:Execution|Agent\s*Gateway|Execution\s*운영)/i, label: 'Runtime & Agent Gateway' },
+  { pattern: /Agent\s*Lifecycle/i, label: 'Agent Lifecycle' },
+  { pattern: /Security\s*&\s*Governance|Identity\s*&\s*Access/i, label: 'Security & Governance' },
+  { pattern: /Instr?[au]?\s*&\s*Data|Data\s*&\s*Integration|Knowledge(?:\s*Hub)?/i, label: 'Data & Integration' },
+  { pattern: /Document\s*Solution\s*Agent/i, label: 'Document Solution Agent' },
+  { pattern: /User\s*Layer/i, label: 'User Layer' },
+  { pattern: /Infrastructure/i, label: 'Infrastructure' },
+];
+
+// 레이어 이름을 본문 줄에서 찾아 label 반환
+function detectLayer(line) {
+  for (const { pattern, label } of LAYER_PATTERNS) {
+    if (pattern.test(line)) return label;
+  }
+  return null;
+}
+
+// 최상위 섹션 헤더 감지 (AX플랫폼전략, AX사업기획, AX기술 등)
+function detectTopSection(line) {
+  const t = line.replace(/^[•*\-]+\s*/, '').replace(/\*+/g, '').trim();
+  if (/^AX플랫폼전략/.test(t)) return 'AX플랫폼전략 (TFT 운영)';
+  if (/^AX사업기획/.test(t)) return 'AX사업기획';
+  if (/^AX기술/.test(t) || /^AX$/.test(t)) return 'AX기술';
+  if (/^AgenticOS/.test(t)) return 'AgenticOS';
+  if (/^리서치/.test(t)) return '리서치';
+  if (/^사업$/.test(t)) return '사업';
+  if (/^기타/.test(t)) return '기타';
+  return null;
 }
 
 function detectStatus(text) {
-  if (/\[완료\]|완료\)|완료,/.test(text)) return 'completed';
-  if (/\[진행\]|진행\)|~\d/.test(text)) return 'in_progress';
-  if (/\[예정\]|예정\)|예정,/.test(text)) return 'planned';
+  if (/\[완료\]|,\s*완료\)|완료\)$/.test(text)) return 'completed';
+  if (/\[예정\]|,\s*예정\)|예정\)$|예정$/.test(text)) return 'planned';
+  if (/\[진행\]|,\s*진행\)|진행\)$|~\d/.test(text)) return 'in_progress';
   if (/지연|블로킹|이슈|문제/.test(text)) return 'blocked';
   return 'in_progress';
 }
 
 function extractPhaseProgress(text) {
-  const match = text.match(/Phase\s*\d+\s*진행율?\s*:\s*(\d{1,3})%/i)
-    || text.match(/진행율?\s*:\s*(\d{1,3})%/i);
-  return match ? parseInt(match[1]) : null;
+  const m = text.match(/Phase\s*\d+\s*진행율?\s*:\s*(\d{1,3})\s*%/i)
+    || text.match(/진행율?\s*:\s*(\d{1,3})\s*%/i);
+  return m ? parseInt(m[1]) : null;
 }
 
 function extractInlineProgress(text) {
-  const match = text.match(/(\d{1,3})\s*%/);
-  return match ? Math.min(100, parseInt(match[1])) : null;
+  const m = text.match(/(\d{1,3})\s*%/);
+  return m ? Math.min(100, parseInt(m[1])) : null;
 }
 
-function removeSection(text, heading) {
-  // 작성예시 등 불필요 섹션 제거
-  const idx = text.indexOf(heading);
-  if (idx === -1) return text;
-  const nextHeading = text.indexOf('\n## ', idx + heading.length);
-  return nextHeading === -1 ? text.substring(0, idx) : text.substring(0, idx) + text.substring(nextHeading);
-}
-
-function parseMemberSection(name, body) {
-  const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
-  const tasks = [];
-  let currentArea = null;
-  let areaProgress = null;
-
-  for (const line of lines) {
-    // 업무 영역 헤더 (진행율 포함)
-    const phaseProgress = extractPhaseProgress(line);
-    if (phaseProgress !== null && line.includes('Phase')) {
-      currentArea = line.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim().substring(0, 60);
-      areaProgress = phaseProgress;
-      continue;
-    }
-
-    // 세부 작업 항목
-    if (line.startsWith('*') || line.startsWith('-') || line.startsWith('•')) {
-      const taskText = line.replace(/^[*\-•]+\s*/, '').trim();
-      if (taskText.length < 5) continue;
-      const status = detectStatus(taskText);
-      const progress = status === 'completed' ? 100
-        : status === 'planned' ? 0
-        : extractInlineProgress(taskText) || (areaProgress !== null ? areaProgress : 50);
-      tasks.push({
-        title: taskText.substring(0, 80).replace(/\(.*?\)$/, '').trim(),
-        status,
-        progress,
-        detail: taskText,
-      });
-    }
-  }
-
-  const progress = tasks.length > 0
-    ? Math.round(tasks.reduce((s, t) => s + t.progress, 0) / tasks.length)
-    : areaProgress || 50;
-
-  return { name, tasks, progress };
-}
-
-function parseAXFormat(text, title) {
-  // 작성예시 섹션 제거
-  let cleaned = removeSection(text, '작성예시');
-  cleaned = removeSection(cleaned, '**작성예시**');
-
-  // 팀원별 섹션 분리: ## [날짜] 이름 주간 업무 보고
-  const memberPattern = /##\s*\[.*?\]\s+(.+?)\s+주간\s+업무\s+보고/g;
-  const sections = [];
-  let match;
-  const positions = [];
-
-  while ((match = memberPattern.exec(cleaned)) !== null) {
-    positions.push({ name: match[1].trim(), start: match.index, end: match.index + match[0].length });
-  }
-
-  for (let i = 0; i < positions.length; i++) {
-    const { name, end } = positions[i];
-    const nextStart = positions[i + 1]?.start ?? cleaned.length;
-    const body = cleaned.substring(end, nextStart);
-    sections.push(parseMemberSection(name, body));
-  }
-
-  return sections.filter(s => s.tasks.length > 0);
+function extractPeriod(title) {
+  const m = title.match(/\((\d+\/\d+)\)/) || title.match(/(\d{2}\/\d{1,2}\/\d{1,2})/);
+  return m ? m[1] : title;
 }
 
 function extractHighlights(text) {
   return text.split('\n')
-    .filter(l => /완료\)|완료,|\[완료\]/.test(l) && l.length < 120)
+    .filter(l => /완료\)|완료,|\[완료\]/.test(l) && l.length < 150)
     .slice(0, 6)
-    .map(l => l.replace(/^[*\-•]+\s*/, '').replace(/\(.*?\)$/, '').trim());
+    .map(l => l.replace(/^[•*\-]+\s*/, '').replace(/\(.*?\)$/, '').trim())
+    .filter(Boolean);
 }
 
 function extractIssues(text) {
   return text.split('\n')
-    .filter(l => /지연|이슈|문제|딜레이|블로킹/.test(l) && l.length < 120)
+    .filter(l => /지연|이슈|문제|딜레이|블로킹/.test(l) && l.length < 150)
     .slice(0, 5)
-    .map(l => l.replace(/^[*\-•]+\s*/, '').trim());
+    .map(l => l.replace(/^[•*\-]+\s*/, '').trim())
+    .filter(Boolean);
 }
 
 function extractNextPlans(text) {
   return text.split('\n')
-    .filter(l => /예정\)|예정,|\[예정\]|예정$/.test(l) && l.length < 120)
+    .filter(l => /예정\)|예정,|\[예정\]|예정$/.test(l) && l.length < 150)
     .slice(0, 5)
-    .map(l => l.replace(/^[*\-•]+\s*/, '').trim());
+    .map(l => l.replace(/^[•*\-]+\s*/, '').trim())
+    .filter(Boolean);
 }
 
 /**
- * 주간보고 텍스트 → 구조화 데이터 파싱
+ * 레이어 섹션을 파싱하여 task 목록 반환
+ */
+function parseLayerTasks(lines) {
+  const tasks = [];
+  let baseProgress = null;
+
+  for (const line of lines) {
+    const p = extractPhaseProgress(line);
+    if (p !== null) { baseProgress = p; continue; }
+
+    if (/^[•*\-]/.test(line) || line.length > 5) {
+      const text = line.replace(/^[•*\-]+\s*/, '').trim();
+      if (text.length < 5) continue;
+      if (detectTopSection(text) || detectLayer(text)) continue; // 헤더 줄 건너뜀
+
+      const status = detectStatus(text);
+      const progress = status === 'completed' ? 100
+        : status === 'planned' ? 0
+        : extractInlineProgress(text) ?? baseProgress ?? 50;
+
+      tasks.push({
+        title: text.substring(0, 100).replace(/\s*\(.*?\)$/, '').trim(),
+        status,
+        progress,
+        detail: text,
+      });
+    }
+  }
+
+  return tasks;
+}
+
+/**
+ * AX1 주간업무 (날짜) 형식 파싱 → 레이어별 카테고리
+ */
+function parseAX1Format(text) {
+  // 작성 방법 / 작성예시 섹션 제거 (첫 번째 실제 섹션까지)
+  const firstSection = text.search(/AX플랫폼전략|AX사업기획|AX기술|AgenticOS|리서치/);
+  const cleaned = firstSection > 0 ? text.substring(firstSection) : text;
+
+  const lines = cleaned.split('\n').map(l => l.trim()).filter(Boolean);
+
+  // 각 레이어/섹션별로 줄 묶기
+  const buckets = new Map(); // label → lines[]
+  let currentTop = null;
+  let currentLayer = null;
+
+  for (const line of lines) {
+    const top = detectTopSection(line);
+    if (top) {
+      currentTop = top;
+      currentLayer = null;
+      if (!buckets.has(top)) buckets.set(top, []);
+      continue;
+    }
+
+    const layer = detectLayer(line);
+    if (layer) {
+      currentLayer = layer;
+      if (!buckets.has(layer)) buckets.set(layer, []);
+      const phaseProgress = extractPhaseProgress(line);
+      if (phaseProgress !== null) {
+        buckets.get(layer).push(`Phase 진행율 : ${phaseProgress}%`);
+      }
+      continue;
+    }
+
+    // 일반 내용 줄
+    const target = currentLayer || currentTop;
+    if (target && buckets.has(target)) {
+      buckets.get(target).push(line);
+    }
+  }
+
+  // 레이어 우선 순서 정렬
+  const LAYER_ORDER = [
+    'Runtime & Agent Gateway',
+    'Agent Lifecycle',
+    'Security & Governance',
+    'Data & Integration',
+    'Document Solution Agent',
+    'User Layer',
+    'Infrastructure',
+    'AX플랫폼전략 (TFT 운영)',
+    'AX사업기획',
+    'AX기술',
+    'AgenticOS',
+    '리서치',
+    '사업',
+    '기타',
+  ];
+
+  const categories = [];
+
+  for (const label of LAYER_ORDER) {
+    if (!buckets.has(label)) continue;
+    const sectionLines = buckets.get(label);
+    const tasks = parseLayerTasks(sectionLines);
+    if (tasks.length === 0) continue;
+
+    const phaseProgressLine = sectionLines.find(l => /Phase 진행율/.test(l));
+    const phaseProgress = phaseProgressLine ? extractPhaseProgress(phaseProgressLine) : null;
+    const progress = phaseProgress
+      ?? (tasks.length > 0
+        ? Math.round(tasks.reduce((s, t) => s + t.progress, 0) / tasks.length)
+        : 50);
+
+    categories.push({ name: label, tasks, progress });
+  }
+
+  return categories;
+}
+
+/**
+ * 주간보고 텍스트 → 구조화 데이터
  */
 export async function parseReport(text, title) {
-  // AX플랫폼전략팀 형식 우선 시도
-  const categories = parseAXFormat(text, title);
+  let categories = parseAX1Format(text);
 
-  // 파싱 실패 시 폴백: 전체 텍스트를 단일 카테고리로
+  // 파싱 실패 시 폴백
   if (categories.length === 0) {
-    const lines = text.split('\n').filter(l => l.trim());
-    const tasks = lines
-      .filter(l => /^[*\-•]/.test(l.trim()))
+    const tasks = text.split('\n')
+      .map(l => l.trim())
+      .filter(l => /^[•*\-]/.test(l))
       .slice(0, 20)
       .map(l => {
-        const t = l.replace(/^[*\-•]+\s*/, '').trim();
+        const t = l.replace(/^[•*\-]+\s*/, '').trim();
         const status = detectStatus(t);
         return { title: t.substring(0, 80), status, progress: status === 'completed' ? 100 : 50, detail: t };
       });
@@ -145,7 +221,6 @@ export async function parseReport(text, title) {
   const overall_progress = allTasks.length > 0
     ? Math.round(allTasks.reduce((s, t) => s + t.progress, 0) / allTasks.length)
     : 50;
-
   const completedCount = allTasks.filter(t => t.status === 'completed').length;
 
   return {

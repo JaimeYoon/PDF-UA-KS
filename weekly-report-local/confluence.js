@@ -19,7 +19,7 @@ export class ConfluenceClient {
 
   /** 부모 페이지의 하위 주간보고 목록 최신순 반환 (CQL 사용, 중첩 구조 지원) */
   async listWeeklyPages(limit = 20) {
-    const cql = `ancestor = ${this.parentPageId} AND title ~ "주간 업무 보고" AND type = page ORDER BY lastmodified DESC`;
+    const cql = `ancestor = ${this.parentPageId} AND title ~ "주간업무" AND type = page ORDER BY lastmodified DESC`;
     try {
       const res = await this.http.get('/content/search', {
         params: { cql, limit, expand: 'version,history' },
