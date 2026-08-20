@@ -1,8 +1,9 @@
 /**
  * AX사업기획실 주간업무 형식 파서 (AX1 스페이스, ancestor 2063040683)
- * 레이어별 파싱: Runtime & Agent Gateway, Agent Lifecycle, Security & Governance,
+ * 레이어별: Runtime & Agent Gateway, Agent Lifecycle, Security & Governance,
  *   Data & Integration, Infrastructure, Document Solution Agent, User Layer
- *   + AX사업기획, AX기술 섹션
+ * 팀별: AX사업기획, AX기술 (별도 섹션)
+ * 업무 항목: (날짜, 상태) 포함한 원문 그대로 표시
  */
 
 const LAYER_PATTERNS = [
@@ -58,31 +59,32 @@ function extractPeriod(title) {
   return m ? m[1] : title;
 }
 
-/** 날짜/상태 괄호, 인라인 URL 등 제거 → 핵심 업무명만 남김 */
+/**
+ * 인라인 URL 주석·앞의 [상태] 태그만 제거.
+ * (날짜, 상태) 괄호는 원문 그대로 유지.
+ */
 function cleanTaskText(text) {
   return text
-    .replace(/\s*\/\/\s+https?:\/\/\S+/g, '')             // URL 주석 제거
-    .replace(/\s*\([~～]?\d+\/\d+[~～]\d+\/\d+,?\s*(?:진행|완료|예정|지연)?\)\s*$/g, '') // (날짜~날짜, 상태)
-    .replace(/\s*\([~～]?\d+\/\d+,?\s*(?:진행|완료|예정|지연)\)\s*$/g, '')               // (~날짜, 상태)
-    .replace(/\s*\(\d+\/\d+[~～]\d+\/\d+\)\s*$/g, '')     // (날짜~날짜)
+    .replace(/\s*\/\/\s+https?:\/\/\S+/g, '')       // "// https://..." URL 주석 제거
+    .replace(/^\[(?:진행|완료|예정|지연)\]\s*/g, '') // 앞의 [상태] 태그 제거
     .trim();
 }
 
-/** 중요 완료 항목만 선별 (배포·구현·구축·연동 등 핵심 키워드 포함된 것만) */
+/** 중요 완료 항목만 선별 */
 function extractHighlights(text) {
   const SIGNIFICANT = /배포|구현|개발.*완료|완료.*개발|구축|연동|확정|출시|릴리즈|적용.*완료|완료.*적용/;
   return text.split('\n')
     .filter(l => /완료\)|완료,|\[완료\]/.test(l) && SIGNIFICANT.test(l) && l.length < 180)
-    .slice(0, 5)
-    .map(l => cleanTaskText(l.replace(/^[•*\-]+\s*/, '').replace(/^\[완료\]\s*/, '').trim()))
+    .slice(0, 6)
+    .map(l => cleanTaskText(l.replace(/^[•*\-]+\s*/, '').trim()))
     .filter(s => s.length > 5);
 }
 
-/** 실질적인 이슈·리스크만 선별 (완료된 항목 제외) */
+/** 실질적 이슈·리스크만 선별 (완료 제외) */
 function extractIssues(text) {
   return text.split('\n')
     .filter(l =>
-      /이슈|리스크|지연|블로킹|차단|문제|필요|미정|확인\s*필요|근무\s*대응/.test(l) &&
+      /이슈|리스크|지연|블로킹|차단|문제|확인\s*필요|근무\s*대응/.test(l) &&
       !/완료\)|완료,|\[완료\]/.test(l) &&
       l.length < 180
     )
@@ -95,11 +97,11 @@ function extractNextPlans(text) {
   return text.split('\n')
     .filter(l => /예정\)|예정,|\[예정\]|예정$/.test(l) && l.length < 180)
     .slice(0, 5)
-    .map(l => cleanTaskText(l.replace(/^[•*\-]+\s*/, '').replace(/^\[예정\]\s*/, '').trim()))
+    .map(l => cleanTaskText(l.replace(/^[•*\-]+\s*/, '').trim()))
     .filter(s => s.length > 5);
 }
 
-/** 레이어 섹션 내 task 목록 파싱 */
+/** 레이어/섹션 내 task 파싱 — (날짜, 상태) 원문 보존 */
 function parseLayerTasks(lines) {
   const tasks = [];
   let baseProgress = null;
@@ -110,26 +112,27 @@ function parseLayerTasks(lines) {
 
     const raw = line.replace(/^[•*\-]+\s*/, '').trim();
     if (raw.length < 5) continue;
-    if (detectTopSection(raw) || detectLayer(raw)) continue;
-    if (/^각\s*레이어|^공통$/.test(raw)) continue; // 구분자 줄 건너뜀
+    if (detectTopSection(raw)) continue;
+    if (/^각\s*레이어|^공통$/.test(raw)) continue;
 
-    const cleaned = cleanTaskText(raw);
-    if (cleaned.length < 5) continue;
+    const detail = cleanTaskText(raw); // (날짜, 상태) 보존
+    if (detail.length < 5) continue;
 
     const status = detectStatus(raw);
     const progress = status === 'completed' ? 100
       : status === 'planned' ? 0
       : extractInlineProgress(raw) ?? baseProgress ?? 50;
 
-    tasks.push({ title: cleaned.substring(0, 80), status, progress, detail: cleaned });
+    tasks.push({ title: detail.substring(0, 100), status, progress, detail });
   }
 
   return tasks;
 }
 
 /**
- * AX1 주간업무 (날짜) 형식 파싱 → 레이어별 카테고리
- * AX플랫폼전략 (TFT 운영) 자체는 카테고리로 노출하지 않고 하위 레이어만 노출
+ * AX1 주간업무 파싱.
+ * - 레이어 감지는 AX플랫폼전략 섹션 안에서만 수행
+ * - AX사업기획, AX기술 등은 독립 섹션으로 수집
  */
 function parseAX1Format(text) {
   const firstSection = text.search(/AX플랫폼전략|AX사업기획|AX기술|AgenticOS|리서치/);
@@ -150,13 +153,16 @@ function parseAX1Format(text) {
       continue;
     }
 
-    const layer = detectLayer(line);
-    if (layer) {
-      currentLayer = layer;
-      if (!buckets.has(layer)) buckets.set(layer, []);
-      const pp = extractPhaseProgress(line);
-      if (pp !== null) buckets.get(layer).push(`Phase 진행율 : ${pp}%`);
-      continue;
+    // 레이어 감지는 AX플랫폼전략 섹션 내부에서만
+    if (currentTop === 'AX플랫폼전략 (TFT 운영)') {
+      const layer = detectLayer(line);
+      if (layer) {
+        currentLayer = layer;
+        if (!buckets.has(layer)) buckets.set(layer, []);
+        const pp = extractPhaseProgress(line);
+        if (pp !== null) buckets.get(layer).push(`Phase 진행율 : ${pp}%`);
+        continue;
+      }
     }
 
     const target = currentLayer || currentTop;
@@ -165,7 +171,7 @@ function parseAX1Format(text) {
     }
   }
 
-  // 출력 순서: AX플랫폼전략 (TFT 운영)은 제외, 레이어만 표시
+  // 출력 순서 (AX플랫폼전략 (TFT 운영) 자체는 제외, 하위 레이어만 표시)
   const LAYER_ORDER = [
     'Runtime & Agent Gateway',
     'Agent Lifecycle',
@@ -214,7 +220,7 @@ export async function parseReport(text, title) {
       .map(l => {
         const t = cleanTaskText(l.replace(/^[•*\-]+\s*/, '').trim());
         const status = detectStatus(l);
-        return { title: t.substring(0, 80), status, progress: status === 'completed' ? 100 : 50, detail: t };
+        return { title: t.substring(0, 100), status, progress: status === 'completed' ? 100 : 50, detail: t };
       });
     categories.push({ name: '업무', tasks, progress: 50 });
   }
