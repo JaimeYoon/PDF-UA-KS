@@ -67,10 +67,6 @@ function renderOverview(report) {
           <div class="cat-card">
             <div class="cat-header">
               <span class="cat-name">${esc(c.name)}</span>
-              <span class="cat-pct" style="color:${progressColor(cp)}">${cp}%</span>
-            </div>
-            <div class="cat-bar-wrap">
-              <div class="cat-bar" style="width:${cp}%;background:${progressColor(cp)}"></div>
             </div>
             <ul class="cat-bullet-list">
               ${tasks.map(t => `

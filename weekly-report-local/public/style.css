@@ -80,11 +80,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 /* ── 카테고리 ── */
 .categories { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-bottom: 16px; }
 .cat-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; }
-.cat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.cat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .cat-name { font-weight: 700; font-size: .95rem; }
-.cat-pct { font-weight: 800; font-size: 1.1rem; }
-.cat-bar-wrap { background: var(--gray-100); border-radius: 6px; height: 6px; overflow: hidden; margin-bottom: 12px; }
-.cat-bar { height: 100%; border-radius: 6px; transition: width .6s ease; }
 
 /* 불릿 리스트 (실 보고서 형식) */
 .cat-bullet-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 5px; }

@@ -93,9 +93,9 @@ export class ConfluenceClient {
       $(tbl).replaceWith(rows.join('\n') + '\n');
     });
 
-    $('li').each((_, li) => $(li).prepend('• '));
+    $('li').each((_, li) => { $(li).prepend('• '); $(li).append('\n'); });
     $('h1,h2,h3,h4').each((_, h) => $(h).append('\n'));
-    $('p,br').each((_, el) => $(el).append('\n'));
+    $('p,br,div').each((_, el) => $(el).append('\n'));
 
     return $.text().replace(/\n{3,}/g, '\n\n').trim();
   }
